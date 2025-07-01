@@ -1,6 +1,6 @@
 import sys
-from . import MetaTrader5 as mt5
-#import MetaTrader5 as mt5
+#from . import MetaTrader5 as mt5
+import MetaTrader5 as mt5
 import json
 from datetime import datetime, timedelta
 from collections import defaultdict
