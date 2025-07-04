@@ -1,4 +1,4 @@
-# Market Return Graphs
+# Trading Analytics
 
 ## Project info
 
@@ -424,4 +424,3 @@ For issues and questions:
 
 ---
 
-**Built with ❤️ for traders who want to improve their performance through better journaling and analysis.**
