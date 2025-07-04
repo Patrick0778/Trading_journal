@@ -1,3 +1,4 @@
+import React from "react";
 import {
   LineChart,
   Line,
@@ -7,163 +8,304 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  BarChart,
+  Bar,
+  AreaChart,
+  Area,
 } from "recharts";
-import type { MT5Stats } from "./TradingStats";
-import { useTheme } from "../context/ThemeContext";
-import { Button } from "./ui/button";
-import { Moon, Sun } from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
-interface PerformanceChartProps {
-  period: string;
-  stats?: MT5Stats;
+interface Trade {
+  id: string;
+  date: string;
+  ticker: string;
+  direction: string;
+  entry: number;
+  exit: number;
+  size: number;
+  pnl: number;
+  notes: string;
+  tags: string[];
+  strategy: string;
+  market_condition: string;
+  instrument_type: string;
+  win_loss: string;
+  screenshot_url: string;
+  created_at: string;
 }
 
-const months = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
+interface PerformanceChartProps {
+  trades: Trade[];
+}
 
-// Helper to generate chart data from stats
-const generateChartData = (period: string, stats?: MT5Stats) => {
-  const currentDate = new Date();
-  const currentYear = currentDate.getFullYear();
-  const currentMonth = currentDate.getMonth();
+const PerformanceChart: React.FC<PerformanceChartProps> = ({ trades }) => {
+  // Calculate cumulative P&L for equity curve - ensure proper date sorting
+  const equityCurveData = trades
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .reduce((acc, trade, index) => {
+      const previousValue = acc.length > 0 ? acc[acc.length - 1].value : 0;
+      const newValue = previousValue + (trade.pnl || 0);
+      acc.push({
+        date: new Date(trade.date).toLocaleDateString(),
+        value: newValue,
+        trade: index + 1,
+      });
+      return acc;
+    }, [] as Array<{ date: string; value: number; trade: number }>);
 
-  if (!stats) {
-    // fallback to mock data
-    if (period === "monthly") {
-      // Generate data only up to the current month for the current year
-      return months.slice(0, currentMonth + 1).map((month, i) => ({
-        name: `${month} ${currentYear}`,
-        value: Math.random() * 15000 - 7500,
-        return: (Math.random() - 0.5) * 30,
-      }));
+  // Win/Loss distribution for pie chart
+  const winLossData = [
+    {
+      name: "Wins",
+      value: trades.filter((t) => (t.pnl || 0) > 0).length,
+      color: "#10b981",
+    },
+    {
+      name: "Losses",
+      value: trades.filter((t) => (t.pnl || 0) < 0).length,
+      color: "#ef4444",
+    },
+    {
+      name: "Breakeven",
+      value: trades.filter((t) => (t.pnl || 0) === 0).length,
+      color: "#6b7280",
+    },
+  ];
+
+  // Strategy performance
+  const strategyData = trades.reduce((acc, trade) => {
+    if (!trade.strategy) return acc;
+    if (!acc[trade.strategy]) {
+      acc[trade.strategy] = { strategy: trade.strategy, pnl: 0, count: 0 };
     }
+    acc[trade.strategy].pnl += trade.pnl || 0;
+    acc[trade.strategy].count += 1;
+    return acc;
+  }, {} as Record<string, { strategy: string; pnl: number; count: number }>);
 
-    const baseData = {
-      daily: Array.from({ length: 30 }, (_, i) => ({
-        name: `Day ${i + 1}`,
-        value: Math.random() * 1000 - 500,
-        return: (Math.random() - 0.5) * 10,
-      })),
-      weekly: Array.from({ length: 12 }, (_, i) => ({
-        name: `Week ${i + 1}`,
-        value: Math.random() * 5000 - 2500,
-        return: (Math.random() - 0.5) * 20,
-      })),
-      annual: Array.from({ length: 5 }, (_, i) => {
-        const year = currentYear - 4 + i;
-        return {
-          name: `${year}`,
-          value: Math.random() * 50000 - 25000,
-          return: (Math.random() - 0.5) * 50,
-        };
-      }),
-    };
-    return baseData[period as keyof typeof baseData] || baseData.daily;
-  }
-
-  // If stats available, create data array based on period
-  if (period === "monthly") {
-    return months.slice(0, currentMonth + 1).map((month, i) => ({
-      name: `${month} ${currentYear}`,
-      value: stats.netProfit,
-      return: stats.winRate,
-    }));
-  }
-
-  const points =
-    period === "annual" ? 5 : period === "weekly" ? 12 : 30;
-
-  return Array.from({ length: points }, (_, i) => ({
-    name:
-      period === "annual"
-        ? `${currentYear - 4 + i}`
-        : `${period.charAt(0).toUpperCase() + period.slice(1)} ${i + 1}`,
-    value: stats.netProfit,
-    return: stats.winRate,
+  const strategyChartData = Object.values(strategyData).map((item) => ({
+    strategy: item.strategy,
+    pnl: item.pnl,
+    count: item.count,
   }));
-};
 
-export const PerformanceChart = ({ period, stats }: PerformanceChartProps) => {
-  const { theme, toggleTheme } = useTheme();
-  const data = generateChartData(period, stats);
+  // Monthly performance - ensure proper date handling
+  const monthlyData = trades.reduce((acc, trade) => {
+    try {
+      const tradeDate = new Date(trade.date);
+      if (isNaN(tradeDate.getTime())) return acc; // Skip invalid dates
 
-  const isDark = theme === 'dark';
-  const chartColors = {
-    text: isDark ? '#ffffff' : '#113E21',
-    line: isDark ? '#00ff88' : '#B38B59',
-    grid: isDark ? '#333333' : '#F0F0F0',
-    tooltip: {
-      bg: isDark ? '#1a1a1a' : '#FEFEFE',
-      border: isDark ? '#333333' : '#B38B59',
+      const month = tradeDate.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+      });
+      if (!acc[month]) {
+        acc[month] = { month, pnl: 0, trades: 0 };
+      }
+      acc[month].pnl += trade.pnl || 0;
+      acc[month].trades += 1;
+    } catch (e) {
+      // Skip trades with invalid dates
     }
-  };
+    return acc;
+  }, {} as Record<string, { month: string; pnl: number; trades: number }>);
+
+  const monthlyChartData = Object.values(monthlyData).sort((a, b) => {
+    try {
+      return new Date(a.month).getTime() - new Date(b.month).getTime();
+    } catch (e) {
+      return 0;
+    }
+  });
 
   return (
-    <div className={`relative rounded-lg p-4 ${isDark ? 'bg-[#121212]' : 'bg-white'}`}>
-      <div className="absolute right-4 top-4 z-10">
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={toggleTheme}
-          className={`${isDark ? 'border-gray-700' : 'border-gray-200'}`}
-        >
-          {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-        </Button>
+    <div className="space-y-6">
+      {/* Equity Curve */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Equity Curve</CardTitle>
+          <CardDescription>Cumulative P&L over time</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={300}>
+            <AreaChart data={equityCurveData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis
+                dataKey="date"
+                tick={{ fontSize: 12 }}
+                interval="preserveStartEnd"
+              />
+              <YAxis tick={{ fontSize: 12 }} />
+              <Tooltip
+                formatter={(value: number) => [
+                  `$${value.toFixed(2)}`,
+                  "Cumulative P&L",
+                ]}
+                labelFormatter={(label) => `Trade ${label}`}
+              />
+              <Area
+                type="monotone"
+                dataKey="value"
+                stroke="#3b82f6"
+                fill="#3b82f6"
+                fillOpacity={0.3}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Win/Loss Distribution */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Win/Loss Distribution</CardTitle>
+            <CardDescription>Breakdown of trade outcomes</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={winLossData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, percent }) =>
+                    `${name} ${(percent * 100).toFixed(0)}%`
+                  }
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {winLossData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value: number) => [value, "Trades"]} />
+              </PieChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Strategy Performance */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Strategy Performance</CardTitle>
+            <CardDescription>P&L by trading strategy</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={strategyChartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="strategy" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} />
+                <Tooltip
+                  formatter={(value: number) => [`$${value.toFixed(2)}`, "P&L"]}
+                />
+                <Bar dataKey="pnl" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
       </div>
-      <div className="h-96 w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
-            <XAxis
-              dataKey="name"
-              stroke={chartColors.text}
-              style={{ fontSize: '12px' }}
-            />
-            <YAxis
-              stroke={chartColors.text}
-              style={{ fontSize: '12px' }}
-            />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: chartColors.tooltip.bg,
-                border: `1px solid ${chartColors.tooltip.border}`,
-                borderRadius: "8px",
-                fontSize: '12px',
-              }}
-              labelStyle={{ color: chartColors.text }}
-            />
-            <Legend />
-            <Line
-              type="linear"
-              dataKey="value"
-              stroke={chartColors.line}
-              name="Value"
-              dot={false}
-              strokeWidth={2}
-            />
-            <Line
-              type="linear"
-              dataKey="return"
-              stroke={chartColors.text}
-              name="Return %"
-              dot={false}
-              strokeWidth={2}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
+
+      {/* Monthly Performance */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Monthly Performance</CardTitle>
+          <CardDescription>P&L and trade count by month</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={monthlyChartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+              <YAxis yAxisId="left" tick={{ fontSize: 12 }} />
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                tick={{ fontSize: 12 }}
+              />
+              <Tooltip
+                formatter={(value: number, name: string) => [
+                  name === "pnl" ? `$${value.toFixed(2)}` : value,
+                  name === "pnl" ? "P&L" : "Trades",
+                ]}
+              />
+              <Legend />
+              <Bar
+                yAxisId="left"
+                dataKey="pnl"
+                fill="#3b82f6"
+                radius={[4, 4, 0, 0]}
+                name="P&L"
+              />
+              <Bar
+                yAxisId="right"
+                dataKey="trades"
+                fill="#10b981"
+                radius={[4, 4, 0, 0]}
+                name="Trades"
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      {/* Performance Metrics */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Performance Metrics</CardTitle>
+          <CardDescription>Key trading statistics</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-blue-600">
+                {trades.length}
+              </div>
+              <div className="text-sm text-muted-foreground">Total Trades</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-600">
+                {trades.filter((t) => t.pnl > 0).length}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Winning Trades
+              </div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-red-600">
+                {trades.filter((t) => t.pnl < 0).length}
+              </div>
+              <div className="text-sm text-muted-foreground">Losing Trades</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold">
+                {trades.length > 0
+                  ? (
+                      (trades.filter((t) => t.pnl > 0).length / trades.length) *
+                      100
+                    ).toFixed(1)
+                  : "0"}
+                %
+              </div>
+              <div className="text-sm text-muted-foreground">Win Rate</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };
+
+export default PerformanceChart;
