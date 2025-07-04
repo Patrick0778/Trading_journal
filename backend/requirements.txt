@@ -1,1 +1,6 @@
 MetaTrader5
+supabase
+pandas
+openpyxl
+tabula-py
+PyPDF2
